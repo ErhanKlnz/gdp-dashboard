@@ -1,19 +1,21 @@
-# :earth_americas: GDP dashboard template
+import streamlit as st
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 
-A simple Streamlit app showing the GDP of different countries in the world.
+st.title("🎈 Uygulamaya Hoşgeldiniz")
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://gdp-dashboard-template.streamlit.app/)
+# Veri Seti Yükleyici
+st.title('Veri Seti Yükleyici')
 
-### How to run it on your own machine
+# Dosya yükleme widget'ı
+uploaded_file = st.file_uploader("Bir CSV dosyası yükleyin", type="csv")
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
 
-1. Install the requirements
-
-   ```
-   $ pip install -r requirements.txt
-   ```
-
-2. Run the app
-
-   ```
-   $ streamlit run streamlit_app.py
-   ```
+# Time sütununu sil
+if 'Time' in df.columns:
+    df = df.drop(columns=['Time'])
+    st.write('"Time" sütunu başarıyla silindi.')
+else:
+    st.write('"Time" sütunu bulunamadı.')
