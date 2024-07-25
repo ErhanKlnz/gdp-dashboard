@@ -31,7 +31,6 @@ Kp = st.slider("Kp (Proportional Gain)", min_value=0.1, max_value=2.0, value=0.5
 Ki = st.slider("Ki (Integral Gain)", min_value=0.01, max_value=0.5, value=0.1)
 Kd = st.slider("Kd (Derivative Gain)", min_value=0.001, max_value=0.2, value=0.01)
 
-
 # --- Helper Functions (Q-Learning) ---
 def get_state(temperature):
     return int((temperature - 10) // 0.5)
@@ -41,7 +40,7 @@ def get_action(state):
         return np.random.choice(num_actions)  # Exploration
     else:
         return np.argmax(q_table[state, :])   # Exploitation
-        
+
 def get_reward(state, action, thermostat_setting):
     state_temp = 10 + state * 0.5
     if abs(state_temp - thermostat_setting) <= 0.5:
@@ -137,10 +136,10 @@ simulation_type = st.selectbox("Choose Simulation Type:", ("Q-Learning", "PID", 
 if st.button("Run Simulation"):
     time_q = room_temperatures_q = outside_temperatures_q = heater_output_q = df_q = loss_area_data_q = None
     time_pid = room_temperatures_pid = outside_temperatures_pid = heater_output_pid = df_pid = loss_area_data_pid = None
-    
+
     if simulation_type == "Q-Learning" or simulation_type == "Both":
         time_q, room_temperatures_q, outside_temperatures_q, heater_output_q, df_q, loss_area_data_q = run_q_learning_simulation(initial_room_temperature)
-    
+
     if simulation_type == "PID" or simulation_type == "Both":
         time_pid, room_temperatures_pid, outside_temperatures_pid, heater_output_pid, df_pid, loss_area_data_pid = run_pid_simulation(initial_room_temperature)
 
@@ -150,10 +149,10 @@ if st.button("Run Simulation"):
     if simulation_type == "Q-Learning" and time_q is not None:
         plt.plot(time_q, room_temperatures_q, label="Room Temperature (Q-Learning)", color="blue")
         plt.plot(time_q, heater_output_q, label="Heater Output (Q-Learning)", color="lightblue", linestyle=":")
-    elif simulation_type == "PID" and time_pid is not None:
+    if simulation_type == "PID" and time_pid is not None:
         plt.plot(time_pid, room_temperatures_pid, label="Room Temperature (PID)", color="orange")
         plt.plot(time_pid, heater_output_pid, label="Heater Output (PID)", color="coral", linestyle=":")
-    elif simulation_type == "Both" and time_q is not None and time_pid is not None:
+    if simulation_type == "Both" and time_q is not None and time_pid is not None:
         plt.plot(time_q, room_temperatures_q, label="Room Temperature (Q-Learning)", color="blue")
         plt.plot(time_pid, room_temperatures_pid, label="Room Temperature (PID)", color="orange")
         plt.plot(time_q, heater_output_q, label="Heater Output (Q-Learning)", color="lightblue", linestyle=":")
