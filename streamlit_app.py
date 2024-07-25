@@ -133,6 +133,15 @@ def run_pid_simulation(initial_room_temperature):
 
     return time, room_temperatures, heater_output, df
 
+# --- Calculate Area Between Current Temperature and Set Temperature ---
+def calculate_area_between_temp(time, room_temperatures, set_temp):
+    area = 0
+    for i in range(1, len(time)):
+        dt = time[i] - time[i - 1]
+        avg_temp = (room_temperatures[i] + room_temperatures[i - 1]) / 2
+        area += abs(avg_temp - set_temp) * dt
+    return area
+
 # --- Main App ---
 simulation_type = st.selectbox("Choose Simulation Type:", ("Q-Learning", "PID", "Both"))
 
@@ -142,9 +151,13 @@ if st.button("Run Simulation"):
 
     if simulation_type == "Q-Learning" or simulation_type == "Both":
         time_q, room_temperatures_q, heater_output_q, df_q = run_q_learning_simulation(initial_room_temperature)
+        area_q = calculate_area_between_temp(time_q, room_temperatures_q, thermostat_setting)
+        st.write(f"Q-Learning Area Between Current Temp and Set Temp: {area_q:.2f} °C*minutes")
 
     if simulation_type == "PID" or simulation_type == "Both":
         time_pid, room_temperatures_pid, heater_output_pid, df_pid = run_pid_simulation(initial_room_temperature)
+        area_pid = calculate_area_between_temp(time_pid, room_temperatures_pid, thermostat_setting)
+        st.write(f"PID Area Between Current Temp and Set Temp: {area_pid:.2f} °C*minutes")
 
     # --- Plotting Results ---
     plt.figure(figsize=(12, 6))
@@ -161,10 +174,13 @@ if st.button("Run Simulation"):
         plt.plot(time_q, heater_output_q, label="Heater Output (Q-Learning)", color="lightblue", linestyle="--")
         plt.plot(time_pid, heater_output_pid, label="Heater Output (PID)", color="coral", linestyle="--")
 
+    # Adjust y-axis limits based on available data
+    min_temp = min(room_temperatures_q) if room_temperatures_q is not None else (min(room_temperatures_pid) if room_temperatures_pid is not None else 19)
+    max_temp = max(room_temperatures_q) if room_temperatures_q is not None else (max(room_temperatures_pid) if room_temperatures_pid is not None else 21)
     plt.axhline(y=thermostat_setting, color='r', linestyle='--', label="Thermostat Setting")
     plt.axhline(y=thermostat_setting + 0.5, color='g', linestyle='--', alpha=0.3, label="Acceptable Range")
     plt.axhline(y=thermostat_setting - 0.5, color='g', linestyle='--', alpha=0.3)
-    plt.ylim(19, 21)
+    plt.ylim(min_temp - 1, max_temp + 1)
 
     plt.xlabel("Time (Minutes)")
     plt.ylabel("Temperature (°C)")
