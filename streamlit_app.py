@@ -54,18 +54,11 @@ def get_reward(state, action, thermostat_setting):
 
 def run_q_learning_simulation(initial_room_temperature):
     global q_table  # Ensure we're using the global q_table
-    time = []
-    room_temperatures = []
-    outside_temperatures = []
-    heater_output = []
-
     for episode in range(episodes):
         room_temperature = initial_room_temperature
         state = get_state(room_temperature)
-        for minute in np.arange(0, simulation_minutes, 0.1):
+        for _ in np.arange(0, simulation_minutes, 0.1):
             action = get_action(state)
-            heater_output.append(action)
-
             if action == 1:
                 room_temperature += heater_power * 0.1
             else:
@@ -77,25 +70,38 @@ def run_q_learning_simulation(initial_room_temperature):
             q_table[state, action] += learning_rate * (reward + discount_factor * np.max(q_table[next_state, :]) - q_table[state, action])
             state = next_state
 
-            time.append(minute)
-            room_temperatures.append(room_temperature)
-            outside_temperatures.append(outside_temperature)
+    # Run one final simulation using the learned Q-table
+    time = []
+    room_temperatures = []
+    heater_output = []
+
+    room_temperature = initial_room_temperature
+    state = get_state(room_temperature)
+    for minute in np.arange(0, simulation_minutes, 0.1):
+        action = np.argmax(q_table[state, :])  # Always choose the best action
+        heater_output.append(action)
+
+        if action == 1:
+            room_temperature += heater_power * 0.1
+        else:
+            room_temperature -= heat_loss * 0.1
+
+        state = get_state(room_temperature)
+        time.append(minute)
+        room_temperatures.append(room_temperature)
 
     df = pd.DataFrame({
         'Time (Minutes)': time,
         'Room Temperature (°C)': room_temperatures,
-        'Outside Temperature (°C)': outside_temperatures,
         'Heater Output': heater_output
     })
 
-    loss_area_data = df[df['Room Temperature (°C)'] > thermostat_setting]
-    return time, room_temperatures, outside_temperatures, heater_output, df, loss_area_data
+    return time, room_temperatures, heater_output, df
 
 # --- Simulation Logic (PID) ---
 def run_pid_simulation(initial_room_temperature):
     time = []
     room_temperatures = []
-    outside_temperatures = []
     heater_output = []
 
     integral_error = 0
@@ -117,102 +123,52 @@ def run_pid_simulation(initial_room_temperature):
         heater_output.append(heater_output_percent)
 
         room_temperature += (heater_power * heater_output_percent - heat_loss) * 0.1
-        outside_temperatures.append(outside_temperature)
         room_temperatures.append(room_temperature)
 
     df = pd.DataFrame({
         'Time (Minutes)': time,
         'Room Temperature (°C)': room_temperatures,
-        'Outside Temperature (°C)': outside_temperatures,
         'Heater Output (%)': heater_output
     })
 
-    loss_area_data = df[df['Room Temperature (°C)'] > thermostat_setting]
-    return time, room_temperatures, outside_temperatures, heater_output, df, loss_area_data
+    return time, room_temperatures, heater_output, df
 
 # --- Main App ---
 simulation_type = st.selectbox("Choose Simulation Type:", ("Q-Learning", "PID", "Both"))
 
 if st.button("Run Simulation"):
-    time_q = room_temperatures_q = outside_temperatures_q = heater_output_q = df_q = loss_area_data_q = None
-    time_pid = room_temperatures_pid = outside_temperatures_pid = heater_output_pid = df_pid = loss_area_data_pid = None
+    time_q = room_temperatures_q = heater_output_q = df_q = None
+    time_pid = room_temperatures_pid = heater_output_pid = df_pid = None
 
     if simulation_type == "Q-Learning" or simulation_type == "Both":
-        time_q, room_temperatures_q, outside_temperatures_q, heater_output_q, df_q, loss_area_data_q = run_q_learning_simulation(initial_room_temperature)
+        time_q, room_temperatures_q, heater_output_q, df_q = run_q_learning_simulation(initial_room_temperature)
 
     if simulation_type == "PID" or simulation_type == "Both":
-        time_pid, room_temperatures_pid, outside_temperatures_pid, heater_output_pid, df_pid, loss_area_data_pid = run_pid_simulation(initial_room_temperature)
+        time_pid, room_temperatures_pid, heater_output_pid, df_pid = run_pid_simulation(initial_room_temperature)
 
     # --- Plotting Results ---
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(12, 6))
 
     if simulation_type == "Q-Learning" and time_q is not None:
         plt.plot(time_q, room_temperatures_q, label="Room Temperature (Q-Learning)", color="blue")
-        plt.plot(time_q, heater_output_q, label="Heater Output (Q-Learning)", color="lightblue", linestyle=":")
+        plt.plot(time_q, heater_output_q, label="Heater Output (Q-Learning)", color="lightblue", linestyle="--")
     if simulation_type == "PID" and time_pid is not None:
         plt.plot(time_pid, room_temperatures_pid, label="Room Temperature (PID)", color="orange")
-        plt.plot(time_pid, heater_output_pid, label="Heater Output (PID)", color="coral", linestyle=":")
+        plt.plot(time_pid, heater_output_pid, label="Heater Output (PID)", color="coral", linestyle="--")
     if simulation_type == "Both" and time_q is not None and time_pid is not None:
         plt.plot(time_q, room_temperatures_q, label="Room Temperature (Q-Learning)", color="blue")
         plt.plot(time_pid, room_temperatures_pid, label="Room Temperature (PID)", color="orange")
-        plt.plot(time_q, heater_output_q, label="Heater Output (Q-Learning)", color="lightblue", linestyle=":")
-        plt.plot(time_pid, heater_output_pid, label="Heater Output (PID)", color="coral", linestyle=":")
-
-    if time_q is not None:
-        plt.plot([time_q[0], time_q[-1]], [outside_temperature, outside_temperature], label="Outside Temperature", color="red")
-    elif time_pid is not None:
-        plt.plot([time_pid[0], time_pid[-1]], [outside_temperature, outside_temperature], label="Outside Temperature", color="gray")
+        plt.plot(time_q, heater_output_q, label="Heater Output (Q-Learning)", color="lightblue", linestyle="--")
+        plt.plot(time_pid, heater_output_pid, label="Heater Output (PID)", color="coral", linestyle="--")
 
     plt.axhline(y=thermostat_setting, color='r', linestyle='--', label="Thermostat Setting")
-    plt.axhline(y=thermostat_setting + 0.5, color='g', linestyle='--', label="Upper Threshold")
-    plt.axhline(y=thermostat_setting - 0.5, color='g', linestyle='--', label="Lower Threshold")
+    plt.axhline(y=thermostat_setting + 0.5, color='g', linestyle='--', alpha=0.3, label="Acceptable Range")
+    plt.axhline(y=thermostat_setting - 0.5, color='g', linestyle='--', alpha=0.3)
+    plt.ylim(19, 21)
+
     plt.xlabel("Time (Minutes)")
-    plt.ylabel("Temperature (°C) / Heater Output (%)")
-    plt.title("Thermostat Simulation: Q-Learning vs. PID")
+    plt.ylabel("Temperature (°C)")
     plt.legend()
-    plt.grid(axis='y')
-
-    if time_q is not None and (simulation_type == "Q-Learning" or simulation_type == "Both"):
-        plt.fill_between(time_q, room_temperatures_q, thermostat_setting, 
-                         where=(np.array(room_temperatures_q) > thermostat_setting),
-                         color='red', alpha=0.2, interpolate=True)
-        plt.text(50, 20.2, 'Loss (Q-Learning)', color='red') 
-
-    if time_pid is not None and (simulation_type == "PID" or simulation_type == "Both"):
-        plt.fill_between(time_pid, room_temperatures_pid, thermostat_setting, 
-                         where=(np.array(room_temperatures_pid) > thermostat_setting),
-                         color='purple', alpha=0.2, interpolate=True)
-        plt.text(50, 19.8, 'Loss (PID)', color='purple') 
-
-    plt.yticks(np.arange(9, 22, 0.5))
-    plt.ylim(9, 21)
-
-    st.pyplot(plt)  # Display the Matplotlib plot in Streamlit
-
-    # --- Optional: Altair Charts ---
-    if st.checkbox("Show Altair Charts"):
-        # Altair Chart (Q-Learning)
-        if simulation_type == "Q-Learning" or simulation_type == "Both":
-            # ... (Your Altair chart code for Q-Learning)
-            st.altair_chart(chart_q, use_container_width=True)
-
-        # Altair Chart (PID)
-        if simulation_type == "PID" or simulation_type == "Both":
-            # ... (Your Altair chart code for PID)
-            st.altair_chart(chart_pid, use_container_width=True)
-
-    # Option to show raw data
-    if st.checkbox("Show Raw Data"):
-        st.subheader("Simulation Data")
-        if simulation_type == "Q-Learning" and df_q is not None:
-            st.write(df_q)
-        elif simulation_type == "PID" and df_pid is not None:
-            st.write(df_pid)
-        elif simulation_type == "Both":
-            if df_q is not None:
-                st.write("Q-Learning Data:")
-                st.write(df_q)
-            if df_pid is not None:
-                st.write("PID Data:")
-                st.write(df_pid)
-
+    plt.grid(True)
+    plt.title("Room Temperature Control")
+    st.pyplot(plt)
