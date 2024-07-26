@@ -18,8 +18,8 @@ heat_loss = st.slider("Heat Loss (°C/minute)", min_value=0.05, max_value=0.2, v
 num_states = 41
 num_actions = 2
 q_table = np.zeros((num_states, num_actions))
-learning_rate = 0.1
-discount_factor = 0.95
+learning_rate = 0.09
+discount_factor = 0.97
 exploration_rate = 0.1
 episodes = st.number_input("Training Episodes (Q-Learning)", min_value=100, max_value=5000, value=1000)
 
@@ -27,9 +27,9 @@ episodes = st.number_input("Training Episodes (Q-Learning)", min_value=100, max_
 simulation_minutes = st.number_input("Simulation Minutes", min_value=10, max_value=120, value=60)
 
 # PID Parameters
-Kp = st.slider("Kp (Proportional Gain)", min_value=0.1, max_value=2.0, value=0.5)
-Ki = st.slider("Ki (Integral Gain)", min_value=0.01, max_value=0.5, value=0.1)
-Kd = st.slider("Kd (Derivative Gain)", min_value=0.001, max_value=0.2, value=0.01)
+Kp = st.slider("Kp (Proportional Gain)", min_value=0.1, max_value=1000.0, value=94.0)
+Ki = st.slider("Ki (Integral Gain)", min_value=0.00001, max_value=0.5, value=0.09)
+Kd = st.slider("Kd (Derivative Gain)", min_value=0.001, max_value=0.9, value=0.02)
 
 # --- Helper Functions (Q-Learning) ---
 def get_state(temperature):
