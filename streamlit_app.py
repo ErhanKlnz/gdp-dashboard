@@ -2,6 +2,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+from geneticalgorithm import geneticalgorithm as ga
 
 # --- App Title and Description ---
 st.title("Thermostat Simulation with Q-Learning and PID Control")
@@ -24,12 +25,7 @@ exploration_rate = 0.1
 episodes = st.number_input("Training Episodes (Q-Learning)", min_value=100, max_value=5000, value=1000)
 
 # Simulation Parameters
-simulation_minutes = st.number_input("Simulation Minutes", min_value=10, max_value=120, value=60)
-
-# PID Parameters
-Kp = st.slider("Kp (Proportional Gain)", min_value=0.1, max_value=1000.0, value=94.0)
-Ki = st.slider("Ki (Integral Gain)", min_value=0.00001, max_value=0.5, value=0.09)
-Kd = st.slider("Kd (Derivative Gain)", min_value=0.001, max_value=0.9, value=0.02)
+simulation_minutes = st.number_input("Simulation Minutes", min_value=10, max_value=1440, value=60)
 
 # --- Helper Functions (Q-Learning) ---
 def get_state(temperature):
@@ -99,7 +95,7 @@ def run_q_learning_simulation(initial_room_temperature):
     return time, room_temperatures, heater_output, df
 
 # --- Simulation Logic (PID) ---
-def run_pid_simulation(initial_room_temperature):
+def run_pid_simulation(initial_room_temperature, Kp, Ki, Kd):
     time = []
     room_temperatures = []
     heater_output = []
@@ -142,6 +138,12 @@ def calculate_area_between_temp(time, room_temperatures, set_temp):
         area += abs(avg_temp - set_temp) * dt
     return area
 
+# --- Optimization Function for PID Parameters ---
+def optimize_pid(params):
+    Kp, Ki, Kd = params
+    _, room_temperatures, _, _ = run_pid_simulation(initial_room_temperature, Kp, Ki, Kd)
+    return calculate_area_between_temp(np.arange(0, simulation_minutes, 0.1), room_temperatures, thermostat_setting)
+
 # --- Main App ---
 simulation_type = st.selectbox("Choose Simulation Type:", ("Q-Learning", "PID", "Both"))
 
@@ -155,7 +157,17 @@ if st.button("Run Simulation"):
         st.write(f"Q-Learning Area Between Current Temp and Set Temp: {area_q:.2f} °C*minutes")
 
     if simulation_type == "PID" or simulation_type == "Both":
-        time_pid, room_temperatures_pid, heater_output_pid, df_pid = run_pid_simulation(initial_room_temperature)
+        # Optimize PID parameters using Genetic Algorithm
+        varbound = np.array([[0.1, 1000.0], [0.00001, 0.5], [0.001, 0.9]])
+        algorithm_param = {'max_num_iteration': 100, 'population_size': 50, 'mutation_probability': 0.1, 'elit_ratio': 0.01, 'crossover_probability': 0.5, 'parents_portion': 0.3, 'crossover_type': 'uniform', 'max_iteration_without_improv': None}
+        model = ga(function=optimize_pid, dimension=3, variable_type='real', variable_boundaries=varbound, algorithm_parameters=algorithm_param)
+        model.run()
+        best_params = model.output_dict['variable']
+        Kp, Ki, Kd = best_params
+
+        st.write(f"Optimized PID Parameters: Kp={Kp:.2f}, Ki={Ki:.5f}, Kd={Kd:.3f}")
+        
+        time_pid, room_temperatures_pid, heater_output_pid, df_pid = run_pid_simulation(initial_room_temperature, Kp, Ki, Kd)
         area_pid = calculate_area_between_temp(time_pid, room_temperatures_pid, thermostat_setting)
         st.write(f"PID Area Between Current Temp and Set Temp: {area_pid:.2f} °C*minutes")
 
