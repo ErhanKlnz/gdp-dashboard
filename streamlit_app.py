@@ -22,7 +22,7 @@ initial_room_temperature = st.sidebar.number_input("Initial Room Temperature (°
 thermostat_setting = st.sidebar.number_input("Thermostat Setting (°C)", min_value=15, max_value=25, value=20)
 heater_power = st.sidebar.slider("Heater Power (°C/minute)", min_value=0.1, max_value=0.5, value=0.3)
 base_heat_loss = st.sidebar.slider("Base Heat Loss (°C/minute)", min_value=0.05, max_value=0.2, value=0.1)
-simulation_minutes = st.sidebar.number_input("Simulation Minutes", min_value=10, max_value=120, value=60)
+simulation_minutes = st.sidebar.number_input("Simulation Minutes", min_value=10, max_value=5000, value=60)
 thermostat_sensitivity = st.sidebar.slider("Thermostat Sensitivity (°C)", min_value=0.1, max_value=0.5, value=0.5, step=0.1)
 
 # --- Q-Learning Parameters ---
@@ -185,8 +185,6 @@ def calculate_area_between_temp(time, room_temperatures, set_temp):
         avg_temp = (room_temperatures[i] + room_temperatures[i - 1]) / 2
         area += abs(avg_temp - set_temp) * dt
     return area
-
-# --- Calculate Overshoot and Undershoot Metrics ---
 def calculate_area_metrics(time, room_temperatures, set_temp):
     overshoot = 0
     undershoot = 0
@@ -198,59 +196,94 @@ def calculate_area_metrics(time, room_temperatures, set_temp):
         elif avg_temp < set_temp:
             undershoot += (set_temp - avg_temp) * dt
     return overshoot, undershoot
-
 # --- Main Execution ---
+st.title("Thermostat Control Simulation")
+
+# Algorithm Selection
+simulation_type = st.sidebar.multiselect("Choose Simulation Type(s):", ["On-Off", "Q-Learning", "PID"])
+
+
+# Run Simulations
 if st.button("Run Simulations"):
-    # On-Off Simulation
-    time_on_off, room_temperatures_on_off, area_on_off = run_on_off_simulation(initial_room_temperature, thermostat_sensitivity)
-    overshoot_on_off, undershoot_on_off = calculate_area_metrics(time_on_off, room_temperatures_on_off, thermostat_setting)
+    # Initialize variables
+    results = {}
+    overshoots = {}
+    undershoots = {}
 
-    # Q-Learning Simulation
-    time_q, room_temperatures_q, area_q = run_q_learning_simulation(initial_room_temperature, thermostat_sensitivity)
-    overshoot_q, undershoot_q = calculate_area_metrics(time_q, room_temperatures_q, thermostat_setting)
+    if "On-Off" in simulation_type:
+        time_on_off, room_temperatures_on_off, area_on_off = run_on_off_simulation(initial_room_temperature, thermostat_sensitivity)
+        overshoot_on_off, undershoot_on_off = calculate_area_metrics(time_on_off, room_temperatures_on_off, thermostat_setting)
+        results["On-Off"] = {'time': time_on_off, 'room_temperatures': room_temperatures_on_off}
+        overshoots["On-Off"] = overshoot_on_off
+        undershoots["On-Off"] = undershoot_on_off
 
-    # PID Simulation
-    time_pid, room_temperatures_pid, area_pid = run_pid_simulation(initial_room_temperature, thermostat_sensitivity)
-    overshoot_pid, undershoot_pid = calculate_area_metrics(time_pid, room_temperatures_pid, thermostat_setting)
+    if "Q-Learning" in simulation_type:
+        time_q, room_temperatures_q, area_q = run_q_learning_simulation(initial_room_temperature, thermostat_sensitivity)
+        overshoot_q, undershoot_q = calculate_area_metrics(time_q, room_temperatures_q, thermostat_setting)
+        results["Q-Learning"] = {'time': time_q, 'room_temperatures': room_temperatures_q}
+        overshoots["Q-Learning"] = overshoot_q
+        undershoots["Q-Learning"] = undershoot_q
 
-    # Plotting
-    fig, ax = plt.subplots()
-    ax.plot(time_on_off, room_temperatures_on_off, label="On-Off Control")
-    ax.plot(time_q, room_temperatures_q, label="Q-Learning Control")
-    ax.plot(time_pid, room_temperatures_pid, label="PID Control")
-    ax.axhline(y=thermostat_setting, color='r', linestyle='--', label="Thermostat Setting")
-    ax.set_xlabel("Time (minutes)")
-    ax.set_ylabel("Room Temperature (°C)")
-    ax.legend()
-    st.pyplot(fig)
+    if "PID" in simulation_type:
+        time_pid, room_temperatures_pid, area_pid = run_pid_simulation(initial_room_temperature, thermostat_sensitivity)
+        overshoot_pid, undershoot_pid = calculate_area_metrics(time_pid, room_temperatures_pid, thermostat_setting)
+        results["PID"] = {'time': time_pid, 'room_temperatures': room_temperatures_pid}
+        overshoots["PID"] = overshoot_pid
+        undershoots["PID"] = undershoot_pid
 
-    # Display Area Metrics
-    st.subheader("Performance Metrics")
-    st.write(f"On-Off Control - Area: {area_on_off:.2f}, Overshoot: {overshoot_on_off:.2f}, Undershoot: {undershoot_on_off:.2f}")
-    st.write(f"Q-Learning Control - Area: {area_q:.2f}, Overshoot: {overshoot_q:.2f}, Undershoot: {undershoot_q:.2f}")
-    st.write(f"PID Control - Area: {area_pid:.2f}, Overshoot: {overshoot_pid:.2f}, Undershoot: {undershoot_pid:.2f}")
+    # Plotting Results
+    fig1, ax1 = plt.subplots(figsize=(20, 10))
+    for algo, data in results.items():
+        ax1.plot(data['time'], data['room_temperatures'], label=f"Room Temperature ({algo})")
 
-    # Additional Plots for Overshoot and Undershoot
-    fig2, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+    ax1.axhline(y=thermostat_setting, color='r', linestyle='--', label="Thermostat Setting")
+    ax1.set_xlabel("Time (Minutes)")
+    ax1.set_ylabel("Temperature (°C)")
+    ax1.legend()
+    ax1.grid(True)
+    ax1.set_title("Room Temperature Control Simulation")
 
-    # Overshoot Plot
-    ax1.bar(["On-Off Control", "Q-Learning Control", "PID Control"], [overshoot_on_off, overshoot_q, overshoot_pid], color=['blue', 'green', 'orange'])
-    ax1.set_title('Overshoot Comparison')
-    ax1.set_ylabel('Overshoot Area')
+    st.pyplot(fig1)
 
-    # Undershoot Plot
-    ax2.bar(["On-Off Control", "Q-Learning Control", "PID Control"], [undershoot_on_off, undershoot_q, undershoot_pid], color=['blue', 'green', 'orange'])
-    ax2.set_title('Undershoot Comparison')
-    ax2.set_ylabel('Undershoot Area')
+    # Bar Chart for Comfort and Energy Metrics
+    fig2, ax2 = plt.subplots(figsize=(10, 6))
+    labels = list(overshoots.keys())
+    overshoot_values = [overshoots[algo] for algo in labels]
+    undershoot_values = [undershoots[algo] for algo in labels]
+
+    width = 0.2
+    x = np.arange(len(labels))
+
+    ax2.bar(x - width, overshoot_values, width, label='Overshoot', color='skyblue')
+    ax2.bar(x, undershoot_values, width, label='Undershoot', color='lightcoral')
+
+    ax2.set_ylabel('Area (°C*minutes)')
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(labels)
+    ax2.legend(loc='upper right')
+    ax2.set_title("Comfort and Energy Consumption Metrics")
 
     st.pyplot(fig2)
+    
+    # Comparison of Total Overshoot and Undershoot
+    fig3, ax3 = plt.subplots(figsize=(10, 6))
+    total_overshoot_undershoot = {algo: overshoots[algo] + undershoots[algo] for algo in labels}
 
+    ax3.bar(total_overshoot_undershoot.keys(), total_overshoot_undershoot.values(), color=['blue', 'green', 'orange'])
+    ax3.set_title('Total Overshoot and Undershoot Comparison')
+    ax3.set_ylabel('Total Area (°C*minutes)')
+
+    st.pyplot(fig3)
+    
     # Outdoor Temperature Plot
     outdoor_time = np.arange(0, simulation_minutes, 5)
     outdoor_temps = [get_outdoor_temp(minute, outdoor_temp_values) for minute in outdoor_time]
-    fig3, ax3 = plt.subplots()
-    ax3.plot(outdoor_time, outdoor_temps, label="Outdoor Temperature", color='purple')
-    ax3.set_xlabel("Time (minutes)")
-    ax3.set_ylabel("Outdoor Temperature (°C)")
-    ax3.legend()
-    st.pyplot(fig3)
+    fig4, ax4 = plt.subplots(figsize=(12, 6))
+    ax4.plot(outdoor_time, outdoor_temps, label="Outdoor Temperature", color='purple')
+    ax4.set_xlabel("Time (minutes)")
+    ax4.set_ylabel("Outdoor Temperature (°C)")
+    ax4.legend()
+    st.pyplot(fig4)
+
+    # Highlighting maximum points
+  
