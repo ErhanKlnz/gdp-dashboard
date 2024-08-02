@@ -231,7 +231,7 @@ if st.button("Run Simulations"):
         overshoots["PID"] = overshoot_pid
         undershoots["PID"] = undershoot_pid
 
-    # Plotting Results
+
     fig1, ax1 = plt.subplots(figsize=(20, 10))
     for algo, data in results.items():
         ax1.plot(data['time'], data['room_temperatures'], label=f"Room Temperature ({algo})")
@@ -263,8 +263,17 @@ if st.button("Run Simulations"):
     ax2.legend(loc='upper right')
     ax2.set_title("Comfort and Energy Consumption Metrics")
 
+    # Display Comfort and Energy Metrics
+    st.write("### Comfort and Energy Metrics")
+    st.write(f"**Overshoot and Undershoot Values:**")
+    for algo in labels:
+        st.write(f"{algo} - Overshoot: {overshoot_values[labels.index(algo)]:.2f} °C*minutes, Undershoot: {undershoot_values[labels.index(algo)]:.2f} °C*minutes")
+
     st.pyplot(fig2)
-    
+
+
+
+
     # Comparison of Total Overshoot and Undershoot
     fig3, ax3 = plt.subplots(figsize=(10, 6))
     total_overshoot_undershoot = {algo: overshoots[algo] + undershoots[algo] for algo in labels}
@@ -272,9 +281,15 @@ if st.button("Run Simulations"):
     ax3.bar(total_overshoot_undershoot.keys(), total_overshoot_undershoot.values(), color=['blue', 'green', 'orange'])
     ax3.set_title('Total Overshoot and Undershoot Comparison')
     ax3.set_ylabel('Total Area (°C*minutes)')
+        # Display Total Overshoot and Undershoot Comparison
+    st.write("### Total Overshoot and Undershoot Comparison")
+    st.write(f"**Total Area Values:**")
+    for algo, total_value in total_overshoot_undershoot.items():
+        st.write(f"{algo} - Total Area: {total_value:.2f} °C*minutes")
 
     st.pyplot(fig3)
     
+    st.write("### Outdoor Temperature Plot")
     # Outdoor Temperature Plot
     outdoor_time = np.arange(0, simulation_minutes, 5)
     outdoor_temps = [get_outdoor_temp(minute, outdoor_temp_values) for minute in outdoor_time]
@@ -285,5 +300,4 @@ if st.button("Run Simulations"):
     ax4.legend()
     st.pyplot(fig4)
 
-    # Highlighting maximum points
-  
+ 
