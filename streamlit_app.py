@@ -7,14 +7,22 @@ import numpy as np
 st.title("Thermostat Simulation: Comparing Control Algorithms")
 st.write("This interactive simulation compares On-Off, PID, and Q-Learning control algorithms for maintaining room temperature.")
 
+# --- File Uploader ---
+uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)  # Veri setinizi yükleyin
+    outdoor_temp_values = df['Outdoor Temp (C)'].values
+else:
+    st.error("Please upload a CSV file to proceed.")
+    st.stop()
+
 # --- Input Parameters ---
 st.sidebar.header("Simulation Parameters")
 initial_room_temperature = st.sidebar.number_input("Initial Room Temperature (°C)", min_value=10, max_value=30, value=19)
-outside_temperature = st.sidebar.number_input("Outside Temperature (°C)", min_value=0, max_value=40, value=10)
 thermostat_setting = st.sidebar.number_input("Thermostat Setting (°C)", min_value=15, max_value=25, value=20)
 heater_power = st.sidebar.slider("Heater Power (°C/minute)", min_value=0.1, max_value=0.5, value=0.3)
 base_heat_loss = st.sidebar.slider("Base Heat Loss (°C/minute)", min_value=0.05, max_value=0.2, value=0.1)
-simulation_minutes = st.sidebar.number_input("Simulation Minutes", min_value=10, max_value=120, value=60)
+simulation_minutes = st.sidebar.number_input("Simulation Minutes", min_value=10, max_value=1440, value=60)
 thermostat_sensitivity = st.sidebar.slider("Thermostat Sensitivity (°C)", min_value=0.1, max_value=0.5, value=0.5, step=0.1)
 
 # --- Q-Learning Parameters ---
@@ -59,6 +67,11 @@ def get_reward(state, action, thermostat_setting):
     else:
         return -1  # Slight penalty for not being in range
 
+def get_outdoor_temp(minute, outdoor_temp_values):
+    """Gets the outdoor temperature for the current minute."""
+    index = int(minute // 5)  # Her 5 dakikada bir güncelle
+    return outdoor_temp_values[min(index, len(outdoor_temp_values) - 1)]
+
 # --- Simulation Logic (On-Off) ---
 def run_on_off_simulation(initial_room_temperature, thermostat_sensitivity):
     time = []
@@ -68,6 +81,7 @@ def run_on_off_simulation(initial_room_temperature, thermostat_sensitivity):
 
     for minute in np.arange(0, simulation_minutes, 0.1):
         time.append(minute)
+        outside_temperature = get_outdoor_temp(minute, outdoor_temp_values)
 
         if room_temperature < thermostat_setting - thermostat_sensitivity:
             heater_status = True
@@ -92,7 +106,8 @@ def run_q_learning_simulation(initial_room_temperature, thermostat_sensitivity):
     for episode in range(episodes):
         room_temperature = initial_room_temperature
         state = get_state(room_temperature)
-        for _ in np.arange(0, simulation_minutes, 0.1):
+        for minute in np.arange(0, simulation_minutes, 0.1):
+            outside_temperature = get_outdoor_temp(minute, outdoor_temp_values)  # Add this line to get outdoor temperature
             action = get_action(state, q_table, exploration_rate)
             if action == 1:
                 room_temperature += heater_power * 0.1
@@ -113,6 +128,7 @@ def run_q_learning_simulation(initial_room_temperature, thermostat_sensitivity):
     room_temperature = initial_room_temperature
     state = get_state(room_temperature)
     for minute in np.arange(0, simulation_minutes, 0.1):
+        outside_temperature = get_outdoor_temp(minute, outdoor_temp_values)  # Add this line to get outdoor temperature
         action = np.argmax(q_table[state, :])  # Always choose the best action
 
         if action == 1:
@@ -140,6 +156,7 @@ def run_pid_simulation(initial_room_temperature, thermostat_sensitivity):
 
     for minute in np.arange(0, simulation_minutes, 0.1):
         time.append(minute)
+        outside_temperature = get_outdoor_temp(minute, outdoor_temp_values)
 
         error = thermostat_setting - room_temperature
         proportional_term = Kp * error
@@ -178,90 +195,35 @@ def calculate_area_metrics(time, room_temperatures, set_temp):
             overshoot += (avg_temp - set_temp) * dt
         elif avg_temp < set_temp:
             undershoot += (set_temp - avg_temp) * dt
-    total_area = overshoot + undershoot
-    return overshoot, undershoot, total_area
+    return overshoot, undershoot
 
-# --- Main App ---
-simulation_type = st.sidebar.multiselect("Choose Simulation Type(s):", ["On-Off", "Q-Learning", "PID"])
-if st.sidebar.button("Run Simulation"):
-    results = {}
+# --- Main Execution ---
+if st.button("Run Simulations"):
+    # On-Off Simulation
+    time_on_off, room_temperatures_on_off, area_on_off = run_on_off_simulation(initial_room_temperature, thermostat_sensitivity)
+    overshoot_on_off, undershoot_on_off = calculate_area_metrics(time_on_off, room_temperatures_on_off, thermostat_setting)
 
-    if "On-Off" in simulation_type:
-        time_on_off, room_temperatures_on_off, area_on_off = run_on_off_simulation(initial_room_temperature, thermostat_sensitivity)
-        st.write(f"**On-Off Control:** Area between current temperature and set temperature: {area_on_off:.2f} °C*minutes")
-        df_on_off = pd.DataFrame({
-            'Time (Minutes)': time_on_off,
-            'Room Temperature (°C)': room_temperatures_on_off
-        })
-        results["On-Off"] = {'time': time_on_off, 'room_temperatures': room_temperatures_on_off, 'df': df_on_off}
+    # Q-Learning Simulation
+    time_q, room_temperatures_q, area_q = run_q_learning_simulation(initial_room_temperature, thermostat_sensitivity)
+    overshoot_q, undershoot_q = calculate_area_metrics(time_q, room_temperatures_q, thermostat_setting)
 
-    if "Q-Learning" in simulation_type:
-        time_q, room_temperatures_q, area_q = run_q_learning_simulation(initial_room_temperature, thermostat_sensitivity)
-        st.write(f"**Q-Learning:** Area between current temperature and set temperature: {area_q:.2f} °C*minutes")
-        df_q = pd.DataFrame({
-            'Time (Minutes)': time_q,
-            'Room Temperature (°C)': room_temperatures_q
-        })
-        results["Q-Learning"] = {'time': time_q, 'room_temperatures': room_temperatures_q, 'df': df_q}
+    # PID Simulation
+    time_pid, room_temperatures_pid, area_pid = run_pid_simulation(initial_room_temperature, thermostat_sensitivity)
+    overshoot_pid, undershoot_pid = calculate_area_metrics(time_pid, room_temperatures_pid, thermostat_setting)
 
-    if "PID" in simulation_type:
-        time_pid, room_temperatures_pid, area_pid = run_pid_simulation(initial_room_temperature, thermostat_sensitivity)
-        st.write(f"**PID Control:** Area between current temperature and set temperature: {area_pid:.2f} °C*minutes")
-        df_pid = pd.DataFrame({
-            'Time (Minutes)': time_pid,
-            'Room Temperature (°C)': room_temperatures_pid
-        })
-        results["PID"] = {'time': time_pid, 'room_temperatures': room_temperatures_pid, 'df': df_pid}
+    # Plotting
+    fig, ax = plt.subplots()
+    ax.plot(time_on_off, room_temperatures_on_off, label="On-Off Control")
+    ax.plot(time_q, room_temperatures_q, label="Q-Learning Control")
+    ax.plot(time_pid, room_temperatures_pid, label="PID Control")
+    ax.axhline(y=thermostat_setting, color='r', linestyle='--', label="Thermostat Setting")
+    ax.set_xlabel("Time (minutes)")
+    ax.set_ylabel("Room Temperature (°C)")
+    ax.legend()
+    st.pyplot(fig)
 
-    # --- Plotting Results ---
-    fig1, ax1 = plt.subplots(figsize=(12, 6))
-
-    for algo, data in results.items():
-        ax1.plot(data['time'], data['room_temperatures'], label=f"Room Temperature ({algo})")
-
-    ax1.axhline(y=thermostat_setting, color='r', linestyle='--', label="Thermostat Setting")
-    ax1.set_xlabel("Time (Minutes)")
-    ax1.set_ylabel("Temperature (°C)")
-    ax1.legend()
-    ax1.grid(True)
-    ax1.set_title("Room Temperature Control Simulation")
-
-    st.pyplot(fig1)  # Ana grafiği göster
-
-    # Bar Chart for Comfort and Energy Metrics
-    fig2, ax2 = plt.subplots(figsize=(10, 4))  # Bar grafiği için yeni bir figure oluştur
-    metrics = {algo: calculate_area_metrics(data['time'], data['room_temperatures'], thermostat_setting) for algo, data in results.items()}
-    labels = list(metrics.keys())
-    overshoot_values = [m[0] for m in metrics.values()]
-    undershoot_values = [m[1] for m in metrics.values()]
-    total_values = [m[2] for m in metrics.values()]
-
-    width = 0.2
-    x = np.arange(len(labels))
-
-    ax2.bar(x - width, overshoot_values, width, label='Overshoot', color='skyblue')
-    ax2.bar(x, undershoot_values, width, label='Undershoot', color='lightcoral')
-    ax2.bar(x + width, total_values, width, label='Total', color='lightgreen')
-
-    ax2.set_ylabel('Area (°C*minutes)')
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(labels)
-    ax2.legend(loc='upper right')
-    ax2.set_title("Comfort and Energy Consumption Metrics")
-
-    st.pyplot(fig2)  # Bar grafiğini göster
-
-    # Açıklamayı bar grafiğinin altına ekle
-    st.write("Overshoot = Gereksiz enerji tüketimi + Konforsuzluk")
-    st.write("Undershoot = Konforsuzluk")
-
-    # Display Tables
-    st.subheader("Detailed Results")
-    
-    # Tabloları yan yana göstermek için sütunlar oluştur
-    col1, col2, col3 = st.columns(3)
-
-    for algo, data in results.items():
-        with col1 if algo == "On-Off" else col2 if algo == "Q-Learning" else col3:
-            st.write(f"**{algo} Control:**")
-            st.dataframe(data['df'].style.hide(axis='index'))  # Tabloyu indexsiz göster
+    # Display Area Metrics
+    st.subheader("Performance Metrics")
+    st.write(f"On-Off Control - Area: {area_on_off:.2f}, Overshoot: {overshoot_on_off:.2f}, Undershoot: {undershoot_on_off:.2f}")
+    st.write(f"Q-Learning Control - Area: {area_q:.2f}, Overshoot: {overshoot_q:.2f}, Undershoot: {undershoot_q:.2f}")
+    st.write(f"PID Control - Area: {area_pid:.2f}, Overshoot: {overshoot_pid:.2f}, Undershoot: {undershoot_pid:.2f}")
