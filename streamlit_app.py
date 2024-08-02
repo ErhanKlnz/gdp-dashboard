@@ -22,7 +22,7 @@ initial_room_temperature = st.sidebar.number_input("Initial Room Temperature (°
 thermostat_setting = st.sidebar.number_input("Thermostat Setting (°C)", min_value=15, max_value=25, value=20)
 heater_power = st.sidebar.slider("Heater Power (°C/minute)", min_value=0.1, max_value=0.5, value=0.3)
 base_heat_loss = st.sidebar.slider("Base Heat Loss (°C/minute)", min_value=0.05, max_value=0.2, value=0.1)
-simulation_minutes = st.sidebar.number_input("Simulation Minutes", min_value=10, max_value=2000, value=60)
+simulation_minutes = st.sidebar.number_input("Simulation Minutes", min_value=10, max_value=120, value=60)
 thermostat_sensitivity = st.sidebar.slider("Thermostat Sensitivity (°C)", min_value=0.1, max_value=0.5, value=0.5, step=0.1)
 
 # --- Q-Learning Parameters ---
@@ -229,4 +229,28 @@ if st.button("Run Simulations"):
     st.write(f"On-Off Control - Area: {area_on_off:.2f}, Overshoot: {overshoot_on_off:.2f}, Undershoot: {undershoot_on_off:.2f}")
     st.write(f"Q-Learning Control - Area: {area_q:.2f}, Overshoot: {overshoot_q:.2f}, Undershoot: {undershoot_q:.2f}")
     st.write(f"PID Control - Area: {area_pid:.2f}, Overshoot: {overshoot_pid:.2f}, Undershoot: {undershoot_pid:.2f}")
-   
+
+    # Additional Plots for Overshoot and Undershoot
+    fig2, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+
+    # Overshoot Plot
+    ax1.bar(["On-Off Control", "Q-Learning Control", "PID Control"], [overshoot_on_off, overshoot_q, overshoot_pid], color=['blue', 'green', 'orange'])
+    ax1.set_title('Overshoot Comparison')
+    ax1.set_ylabel('Overshoot Area')
+
+    # Undershoot Plot
+    ax2.bar(["On-Off Control", "Q-Learning Control", "PID Control"], [undershoot_on_off, undershoot_q, undershoot_pid], color=['blue', 'green', 'orange'])
+    ax2.set_title('Undershoot Comparison')
+    ax2.set_ylabel('Undershoot Area')
+
+    st.pyplot(fig2)
+
+    # Outdoor Temperature Plot
+    outdoor_time = np.arange(0, simulation_minutes, 5)
+    outdoor_temps = [get_outdoor_temp(minute, outdoor_temp_values) for minute in outdoor_time]
+    fig3, ax3 = plt.subplots()
+    ax3.plot(outdoor_time, outdoor_temps, label="Outdoor Temperature", color='purple')
+    ax3.set_xlabel("Time (minutes)")
+    ax3.set_ylabel("Outdoor Temperature (°C)")
+    ax3.legend()
+    st.pyplot(fig3)
