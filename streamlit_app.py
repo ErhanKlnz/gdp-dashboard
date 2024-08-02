@@ -232,7 +232,7 @@ if st.button("Run Simulations"):
         undershoots["PID"] = undershoot_pid
 
 
-    fig1, ax1 = plt.subplots(figsize=(20, 10))
+    fig1, ax1 = plt.subplots(figsize=(30, 15))
     for algo, data in results.items():
         ax1.plot(data['time'], data['room_temperatures'], label=f"Room Temperature ({algo})")
 
@@ -270,9 +270,6 @@ if st.button("Run Simulations"):
         st.write(f"{algo} - Overshoot: {overshoot_values[labels.index(algo)]:.2f} °C*minutes, Undershoot: {undershoot_values[labels.index(algo)]:.2f} °C*minutes")
 
     st.pyplot(fig2)
-
-
-
 
     # Comparison of Total Overshoot and Undershoot
     fig3, ax3 = plt.subplots(figsize=(10, 6))
