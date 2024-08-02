@@ -20,8 +20,8 @@ else:
 st.sidebar.header("Simulation Parameters")
 initial_room_temperature = st.sidebar.number_input("Initial Room Temperature (°C)", min_value=10, max_value=30, value=19)
 thermostat_setting = st.sidebar.number_input("Thermostat Setting (°C)", min_value=15, max_value=25, value=20)
-heater_power = st.sidebar.slider("Heater Power (°C/minute)", min_value=0.1, max_value=0.5, value=0.3)
-base_heat_loss = st.sidebar.slider("Base Heat Loss (°C/minute)", min_value=0.05, max_value=0.2, value=0.1)
+heater_power = st.sidebar.slider("Heater Power (°C/minute)", min_value=0.0, max_value=0.5, value=0.3)
+base_heat_loss = st.sidebar.slider("Base Heat Loss (°C/minute)", min_value=0.00125, max_value=0.2, value=0.1)
 simulation_minutes = st.sidebar.number_input("Simulation Minutes", min_value=10, max_value=1440, value=60)
 thermostat_sensitivity = st.sidebar.slider("Thermostat Sensitivity (°C)", min_value=0.1, max_value=0.5, value=0.5, step=0.1)
 
@@ -76,12 +76,14 @@ def get_outdoor_temp(minute, outdoor_temp_values):
 def run_on_off_simulation(initial_room_temperature, thermostat_sensitivity):
     time = []
     room_temperatures = []
+    outdoor_temperatures = []
     room_temperature = initial_room_temperature
     heater_status = False
 
     for minute in np.arange(0, simulation_minutes, 0.1):
         time.append(minute)
         outside_temperature = get_outdoor_temp(minute, outdoor_temp_values)
+        outdoor_temperatures.append(outside_temperature)
 
         if room_temperature < thermostat_setting - thermostat_sensitivity:
             heater_status = True
@@ -97,17 +99,24 @@ def run_on_off_simulation(initial_room_temperature, thermostat_sensitivity):
 
         room_temperatures.append(room_temperature)
 
+    # Ensure outdoor_temperatures has the same length as time
+    outdoor_temperatures = outdoor_temperatures[:len(time)]
     area_on_off = calculate_area_between_temp(time, room_temperatures, thermostat_setting)
-    return time, room_temperatures, area_on_off
+    return time, room_temperatures, outdoor_temperatures, area_on_off
 
 # --- Simulation Logic (Q-Learning) ---
 def run_q_learning_simulation(initial_room_temperature, thermostat_sensitivity):
     global q_table  # Ensure we're using the global q_table
+    time = []
+    room_temperatures = []
+    outdoor_temperatures = []
+
     for episode in range(episodes):
         room_temperature = initial_room_temperature
         state = get_state(room_temperature)
         for minute in np.arange(0, simulation_minutes, 0.1):
             outside_temperature = get_outdoor_temp(minute, outdoor_temp_values)
+            outdoor_temperatures.append(outside_temperature)
             action = get_action(state, q_table, exploration_rate)
             if action == 1:
                 room_temperature += heater_power * 0.1
@@ -122,13 +131,11 @@ def run_q_learning_simulation(initial_room_temperature, thermostat_sensitivity):
             state = next_state
 
     # Run one final simulation using the learned Q-table
-    time = []
-    room_temperatures = []
-
     room_temperature = initial_room_temperature
     state = get_state(room_temperature)
     for minute in np.arange(0, simulation_minutes, 0.1):
         outside_temperature = get_outdoor_temp(minute, outdoor_temp_values)
+        outdoor_temperatures.append(outside_temperature)
         action = np.argmax(q_table[state, :])  # Always choose the best action
 
         if action == 1:
@@ -141,10 +148,11 @@ def run_q_learning_simulation(initial_room_temperature, thermostat_sensitivity):
         time.append(minute)
         room_temperatures.append(room_temperature)
 
+    # Ensure outdoor_temperatures has the same length as time
+    outdoor_temperatures = outdoor_temperatures[:len(time)]
     area_q = calculate_area_between_temp(time, room_temperatures, thermostat_setting)
-    return time, room_temperatures, area_q
+    return time, room_temperatures, outdoor_temperatures, area_q
 
-# --- Simulation Logic (PID) ---
 def run_pid_simulation(initial_room_temperature, thermostat_sensitivity):
     time = []
     room_temperatures = []
@@ -166,26 +174,19 @@ def run_pid_simulation(initial_room_temperature, thermostat_sensitivity):
         previous_error = error
 
         pid_output = proportional_term + integral_term + derivative_term
-        heater_output_percent = max(0, min(1, pid_output))
-        heater_output.append(heater_output_percent)
+        pid_output = max(0, min(pid_output, 0.5))  # PID çıkışını sınırla
+        heater_output.append(pid_output)
 
         heat_loss = base_heat_loss * (room_temperature - outside_temperature) / 10
 
-        room_temperature += (heater_power * heater_output_percent - heat_loss) * 0.1
+        room_temperature += (heater_power * pid_output - heat_loss) * 0.1
         room_temperatures.append(room_temperature)
 
     area_pid = calculate_area_between_temp(time, room_temperatures, thermostat_setting)
-    return time, room_temperatures, area_pid
+    return time, room_temperatures, area_pid  # Return area_pid
 
-# --- Calculate Area Between Current Temperature and Set Temperature ---
+# --- Metric Calculation ---
 def calculate_area_between_temp(time, room_temperatures, set_temp):
-    area = 0
-    for i in range(1, len(time)):
-        dt = time[i] - time[i - 1]
-        area += abs(room_temperatures[i] - set_temp) * dt
-    return area
-
-def calculate_area_metrics(time, room_temperatures, set_temp):
     overshoot = 0
     undershoot = 0
     for i in range(1, len(time)):
@@ -199,7 +200,7 @@ def calculate_area_metrics(time, room_temperatures, set_temp):
 
 def find_optimum_time(time, room_temperatures, set_temp):
     for i in range(len(time)):
-        if abs(room_temperatures[i] - set_temp) <= 0.2:
+        if abs(room_temperatures[i] - set_temp) <= 0.5:
             return time[i]
     return None
 
@@ -212,29 +213,29 @@ run_pid = st.sidebar.checkbox("Run PID Simulation", value=True)
 if st.button("Run Simulations"):
     # On-Off Simulation
     if run_on_off:
-        time_on_off, room_temperatures_on_off, area_on_off = run_on_off_simulation(initial_room_temperature, thermostat_sensitivity)
-        overshoot_on_off, undershoot_on_off = calculate_area_metrics(time_on_off, room_temperatures_on_off, thermostat_setting)
+        time_on_off, room_temperatures_on_off, outdoor_temperatures_on_off, area_on_off = run_on_off_simulation(initial_room_temperature, thermostat_sensitivity)
+        overshoot_on_off, undershoot_on_off = calculate_area_between_temp(time_on_off, room_temperatures_on_off, thermostat_setting)
         optimum_time_on_off = find_optimum_time(time_on_off, room_temperatures_on_off, thermostat_setting)
     else:
-        time_on_off = room_temperatures_on_off = area_on_off = None
+        time_on_off = room_temperatures_on_off = outdoor_temperatures_on_off = area_on_off = None
         overshoot_on_off = undershoot_on_off = optimum_time_on_off = None
 
     # Q-Learning Simulation
     if run_q_learning:
-        time_q, room_temperatures_q, area_q = run_q_learning_simulation(initial_room_temperature, thermostat_sensitivity)
-        overshoot_q, undershoot_q = calculate_area_metrics(time_q, room_temperatures_q, thermostat_setting)
+        time_q, room_temperatures_q, outdoor_temperatures_q, area_q = run_q_learning_simulation(initial_room_temperature, thermostat_sensitivity)
+        overshoot_q, undershoot_q = calculate_area_between_temp(time_q, room_temperatures_q, thermostat_setting)
         optimum_time_q = find_optimum_time(time_q, room_temperatures_q, thermostat_setting)
     else:
-        time_q = room_temperatures_q = area_q = None
+        time_q = room_temperatures_q = outdoor_temperatures_q = area_q = None
         overshoot_q = undershoot_q = optimum_time_q = None
 
     # PID Simulation
     if run_pid:
-        time_pid, room_temperatures_pid, area_pid = run_pid_simulation(initial_room_temperature, thermostat_sensitivity)
-        overshoot_pid, undershoot_pid = calculate_area_metrics(time_pid, room_temperatures_pid, thermostat_setting)
+        time_pid, room_temperatures_pid, outdoor_temperatures_pid, area_pid = run_pid_simulation(initial_room_temperature, thermostat_sensitivity)
+        overshoot_pid, undershoot_pid = calculate_area_between_temp(time_pid, room_temperatures_pid, thermostat_setting)
         optimum_time_pid = find_optimum_time(time_pid, room_temperatures_pid, thermostat_setting)
     else:
-        time_pid = room_temperatures_pid = area_pid = None
+        time_pid = room_temperatures_pid = outdoor_temperatures_pid = area_pid = None
         overshoot_pid = undershoot_pid = optimum_time_pid = None
 
     # Plotting Temperature Curves
@@ -251,58 +252,61 @@ if st.button("Run Simulations"):
     ax.legend()
     st.pyplot(fig)
 
-    # Display Area Metrics
-    st.subheader("Performance Metrics")
-    metrics = {}
+    # Plotting Outdoor Temperature Curves
+    fig, ax = plt.subplots()
     if run_on_off:
-        metrics["On-Off Control"] = {
-            "Area": area_on_off,
-            "Overshoot": overshoot_on_off,
-            "Undershoot": undershoot_on_off
-        }
-        st.write(f"On-Off Control - Area: {area_on_off:.2f}, Overshoot: {overshoot_on_off:.2f}, Undershoot: {undershoot_on_off:.2f}, Optimum Time: {optimum_time_on_off:.2f} minutes")
+        ax.plot(time_on_off, outdoor_temperatures_on_off, label="Outdoor Temp - On-Off")
     if run_q_learning:
-        metrics["Q-Learning Control"] = {
-            "Area": area_q,
-            "Overshoot": overshoot_q,
-            "Undershoot": undershoot_q
-        }
-        st.write(f"Q-Learning Control - Area: {area_q:.2f}, Overshoot: {overshoot_q:.2f}, Undershoot: {undershoot_q:.2f}, Optimum Time: {optimum_time_q:.2f} minutes")
+        ax.plot(time_q, outdoor_temperatures_q, label="Outdoor Temp - Q-Learning")
     if run_pid:
-        metrics["PID Control"] = {
-            "Area": area_pid,
-            "Overshoot": overshoot_pid,
-            "Undershoot": undershoot_pid
-        }
-        st.write(f"PID Control - Area: {area_pid:.2f}, Overshoot: {overshoot_pid:.2f}, Undershoot: {undershoot_pid:.2f}, Optimum Time: {optimum_time_pid:.2f} minutes")
+        ax.plot(time_pid, outdoor_temperatures_pid, label="Outdoor Temp - PID")
+    ax.set_xlabel("Time (minutes)")
+    ax.set_ylabel("Outdoor Temperature (°C)")
+    ax.legend()
+    st.pyplot(fig)
 
-    # Bar Chart for Metrics
-    if metrics:
-        metric_names = ['Area', 'Overshoot', 'Undershoot']
-        fig, ax = plt.subplots()
-        for label, values in metrics.items():
-            ax.bar([f"{label} - {name}" for name in metric_names], values.values(), label=label)
-        ax.set_xlabel("Metric")
-        ax.set_ylabel("Value")
-        ax.legend()
-        st.pyplot(fig)
+    # Display Area Metrics
+   # Display Area Metrics
+    st.subheader("Performance Metrics")
+    if run_on_off:
+        st.write(f"On-Off Control - Overshoot: {overshoot_on_off:.2f}, Undershoot: {undershoot_on_off:.2f}")
+    if run_q_learning:
+        st.write(f"Q-Learning Control - Overshoot: {overshoot_q:.2f}, Undershoot: {undershoot_q:.2f}")
+    if run_pid:
+        st.write(f"PID Control - Overshoot: {overshoot_pid:.2f}, Undershoot: {undershoot_pid:.2f}")
+    labels = []
+overshoot_values = []
+undershoot_values = []
 
-    # Table of Optimal Times
-    if any([run_on_off, run_q_learning, run_pid]):
-        st.subheader("Optimal Times for Reaching Set Temperature")
-        optimal_times_data = {
-            "Control Algorithm": [],
-            "Optimum Time (minutes)": []
-        }
-        if run_on_off:
-            optimal_times_data["Control Algorithm"].append("On-Off Control")
-            optimal_times_data["Optimum Time (minutes)"].append(optimum_time_on_off)
-        if run_q_learning:
-            optimal_times_data["Control Algorithm"].append("Q-Learning Control")
-            optimal_times_data["Optimum Time (minutes)"].append(optimum_time_q)
-        if run_pid:
-            optimal_times_data["Control Algorithm"].append("PID Control")
-            optimal_times_data["Optimum Time (minutes)"].append(optimum_time_pid)
-        
-        df_optimal_times = pd.DataFrame(optimal_times_data)
-        st.table(df_optimal_times)
+if run_on_off and overshoot_on_off is not None:
+    labels.append("On-Off")
+    overshoot_values.append(overshoot_on_off)
+    undershoot_values.append(undershoot_on_off)
+
+if run_q_learning and overshoot_q is not None:
+    labels.append("Q-Learning")
+    overshoot_values.append(overshoot_q)
+    undershoot_values.append(undershoot_q)
+
+if run_pid and overshoot_pid is not None:
+    labels.append("PID")
+    overshoot_values.append(overshoot_pid)
+    undershoot_values.append(undershoot_pid)
+
+# Plotting Overshoot
+fig, ax = plt.subplots()
+bar_width = 0.35
+index = np.arange(len(labels))
+
+bar1 = ax.bar(index, overshoot_values, bar_width, label='Overshoot')
+bar2 = ax.bar(index + bar_width, undershoot_values, bar_width, label='Undershoot')
+
+ax.set_xlabel('Control Algorithms')
+ax.set_ylabel('Area')
+ax.set_title('Overshoot and Undershoot by Control Algorithms')
+ax.set_xticks(index + bar_width / 2)
+ax.set_xticklabels(labels)
+ax.legend()
+
+# Display the plot
+st.pyplot(fig)
